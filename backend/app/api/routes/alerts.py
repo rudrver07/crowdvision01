@@ -42,6 +42,7 @@ class AlertStatusPatchRequest(BaseModel):
 
 
 @router.get("", response_model=list[AlertResponse])
+@router.get("/", response_model=list[AlertResponse], include_in_schema=False)
 async def list_alerts(
     db: Annotated[AsyncSession, Depends(get_db)],
     event_id: Optional[str] = Query(None),

@@ -264,7 +264,8 @@ class ApiService {
     const params = new URLSearchParams();
     if (eventId) params.append('event_id', eventId);
     if (status) params.append('status', status);
-    return this.request<AlertItem[]>(`/alerts/?${params.toString()}`);
+    const query = params.toString() ? `?${params.toString()}` : '';
+    return this.request<AlertItem[]>(`/alerts${query}`);
   }
 
   async updateAlertStatus(alertId: string, status: 'ACKNOWLEDGED' | 'RESOLVED'): Promise<AlertItem> {
