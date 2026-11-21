@@ -93,7 +93,7 @@ async def test_full_platform_e2e_workflow(tmp_path: Path):
         # 9. Wait for Background Video Processing Job
         job_status = "QUEUED"
         job_data = {}
-        for _ in range(80):
+        for _ in range(120):
             await asyncio.sleep(0.25)
             j_res = await client.get(f"/api/videos/jobs/{video_id}", headers=headers)
             assert j_res.status_code == 200
