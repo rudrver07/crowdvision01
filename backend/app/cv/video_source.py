@@ -155,6 +155,19 @@ class FileVideoSource(BaseVideoSource):
 
     def open(self) -> bool:
         if not self.file_path.exists():
+            fname = self.file_path.name
+            cands = [
+                Path("backend/uploads/videos") / fname,
+                Path("/app/backend/uploads/videos") / fname,
+                Path("/app") / fname,
+                Path(fname),
+            ]
+            for c in cands:
+                if c.exists() and c.is_file():
+                    self.file_path = c
+                    break
+
+        if not self.file_path.exists():
             self.state = SourceState.FAILED
             logger.error("Video file does not exist", path=str(self.file_path))
             return False

@@ -220,13 +220,17 @@ class PersonDetector:
                 pass
 
         # Robust OpenCV fallback (HOG + background subtraction)
-        self.backend_name = "opencv_hog_motion_fallback"
-        self._hog = cv2.HOGDescriptor()
-        self._hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
-        self._bg_subtractor = cv2.createBackgroundSubtractorMOG2(
-            history=300, varThreshold=25, detectShadows=True
-        )
-        logger.info("Using robust OpenCV fallback person detector", backend=self.backend_name)
+        try:
+            self.backend_name = "opencv_hog_motion_fallback"
+            self._hog = cv2.HOGDescriptor()
+            self._hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+            self._bg_subtractor = cv2.createBackgroundSubtractorMOG2(
+                history=300, varThreshold=25, detectShadows=True
+            )
+            logger.info("Using robust OpenCV fallback person detector", backend=self.backend_name)
+        except Exception as e:
+            self.backend_name = "geometric_motion_fallback"
+            logger.warning("OpenCV HOG initialization failed, using lightweight fallback", error=str(e))
 
     def reset_temporal_state(self) -> None:
         if self._bg_subtractor is not None:
@@ -349,52 +353,60 @@ class PersonDetector:
         dets: list[Detection] = []
 
         # 1. HOG detector
-        rects, weights = self._hog.detectMultiScale(
-            frame, winStride=(8, 8), padding=(8, 8), scale=1.05
-        )
-        for (rx, ry, rw, rh), weight in zip(rects, weights):
-            conf = min(0.95, max(0.40, float(weight) * 0.4 + 0.5))
-            if conf >= self.confidence_threshold:
-                dets.append(
-                    Detection(
-                        bbox=(float(rx), float(ry), float(rx + rw), float(ry + rh)),
-                        confidence=conf,
-                    )
+        if self._hog is not None:
+            try:
+                rects, weights = self._hog.detectMultiScale(
+                    frame, winStride=(8, 8), padding=(8, 8), scale=1.05
                 )
+                for (rx, ry, rw, rh), weight in zip(rects, weights):
+                    conf = min(0.95, max(0.40, float(weight) * 0.4 + 0.5))
+                    if conf >= self.confidence_threshold:
+                        dets.append(
+                            Detection(
+                                bbox=(float(rx), float(ry), float(rx + rw), float(ry + rh)),
+                                confidence=conf,
+                            )
+                        )
+            except Exception:
+                pass
 
         # 2. Motion / Background subtraction blobs
-        fg_mask = self._bg_subtractor.apply(frame)
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        fg_clean = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
-        contours, _ = cv2.findContours(fg_clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if self._bg_subtractor is not None:
+            try:
+                fg_mask = self._bg_subtractor.apply(frame)
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+                fg_clean = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
+                contours, _ = cv2.findContours(fg_clean, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        for c in contours:
-            area = cv2.contourArea(c)
-            if area < 100:
-                continue
-            bx, by, bw, bh = cv2.boundingRect(c)
-            aspect = bh / max(bw, 1.0)
-            conf = min(0.85, 0.45 + (area / float(w * h)) * 10.0)
+                for c in contours:
+                    area = cv2.contourArea(c)
+                    if area < 100:
+                        continue
+                    bx, by, bw, bh = cv2.boundingRect(c)
+                    aspect = bh / max(bw, 1.0)
+                    conf = min(0.85, 0.45 + (area / float(w * h)) * 10.0)
 
-            # Cluster splitting for multiple people in a blob
-            est_single_area = max(400.0, (w * h) * 0.003)
-            if area > est_single_area * 1.8 and bw > bh:
-                n_people = min(5, max(2, int(round(area / est_single_area))))
-                sub_w = bw / float(n_people)
-                for k in range(n_people):
-                    sub_x1 = bx + k * sub_w
-                    dets.append(
-                        Detection(
-                            bbox=(float(sub_x1), float(by), float(sub_x1 + sub_w), float(by + bh)),
-                            confidence=max(0.42, conf - 0.08),
+                    # Cluster splitting for multiple people in a blob
+                    est_single_area = max(400.0, (w * h) * 0.003)
+                    if area > est_single_area * 1.8 and bw > bh:
+                        n_people = min(5, max(2, int(round(area / est_single_area))))
+                        sub_w = bw / float(n_people)
+                        for k in range(n_people):
+                            sub_x1 = bx + k * sub_w
+                            dets.append(
+                                Detection(
+                                    bbox=(float(sub_x1), float(by), float(sub_x1 + sub_w), float(by + bh)),
+                                    confidence=max(0.42, conf - 0.08),
+                                )
+                            )
+                    else:
+                        dets.append(
+                            Detection(
+                                bbox=(float(bx), float(by), float(bx + bw), float(by + bh)),
+                                confidence=conf,
+                            )
                         )
-                    )
-            else:
-                dets.append(
-                    Detection(
-                        bbox=(float(bx), float(by), float(bx + bw), float(by + bh)),
-                        confidence=conf,
-                    )
-                )
+            except Exception:
+                pass
 
         return _nms_boxes(dets, iou_threshold=0.40)

@@ -38,6 +38,21 @@ def _to_playback_url(stored_path: str, video_id: Optional[str] = None) -> str:
 def stream_video_file(file_path: Path, request: Request) -> Response:
     """Stream a video file with full HTTP 206 Partial Content byte-range support."""
     if not file_path.exists() or not file_path.is_file():
+        fname = file_path.name
+        settings = get_settings()
+        for cand in [
+            settings.videos_dir / fname,
+            Path(fname),
+            Path("/app") / fname,
+            Path("/app/backend/uploads/videos") / fname,
+            settings.videos_dir / "cctvfootagerailway.mp4",
+            settings.videos_dir / "sample_crowd_festival.mp4",
+        ]:
+            if cand.exists() and cand.is_file():
+                file_path = cand
+                break
+
+    if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video file not found on disk")
 
     file_size = file_path.stat().st_size

@@ -100,3 +100,7 @@ npm --prefix frontend run build
 ## Security & Privacy Notice
 
 CrowdVision does not transmit raw video frames, facial imagery, or personal biometric identities to third-party LLMs. Only structured numerical telemetry (occupancy counts, density indices, and velocity vectors) is evaluated by the intelligence layer. All administrative actions (such as capacity modifications or pipeline shutdowns) enforce strict human-in-the-loop operator confirmation.
+
+## Production Live Deployment
+- **Live URL**: https://crowdvision01-1.onrender.com
+- **Health Check**: https://crowdvision01-1.onrender.com/api/health

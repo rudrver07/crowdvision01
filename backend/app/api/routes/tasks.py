@@ -413,105 +413,115 @@ async def get_task_history(
 @router.post("/{task_id}/process", response_model=ProcessingJobResponse, status_code=status.HTTP_201_CREATED)
 async def start_task_processing(
     task_id: str,
+    db: Annotated[AsyncSession, Depends(get_db)],
     payload: Optional[ProcessStartRequest] = None,
-    db: Annotated[AsyncSession, Depends(get_db)] = None,
 ):
-    task = await db.get(Task, task_id)
-    if not task:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    try:
+        task = await db.get(Task, task_id)
+        if not task:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
-    # Validate spatial zones
-    has_zones = bool(task.layout_snapshot and task.layout_snapshot.get("zones_data"))
-    if not has_zones and task.layout_id:
-        task.layout_snapshot = await _capture_layout_snapshot(db, task.layout_id)
+        # Validate spatial zones
         has_zones = bool(task.layout_snapshot and task.layout_snapshot.get("zones_data"))
+        if not has_zones and task.layout_id:
+            task.layout_snapshot = await _capture_layout_snapshot(db, task.layout_id)
+            has_zones = bool(task.layout_snapshot and task.layout_snapshot.get("zones_data"))
 
-    if not has_zones:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Task cannot enter processing without configured spatial layout and zones.",
+        if not has_zones:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Task cannot enter processing without configured spatial layout and zones.",
+            )
+
+        # Determine video file / source
+        video_id = (payload.video_id if payload and hasattr(payload, "video_id") else None) or (task.video_config or {}).get("video_id")
+        video_record = None
+        if video_id:
+            video_record = await db.get(VideoFile, video_id)
+
+        if not video_record:
+            v_stmt = select(VideoFile).where(VideoFile.event_id == task.id).order_by(desc(VideoFile.created_at)).limit(1)
+            video_record = (await db.execute(v_stmt)).scalar_one_or_none()
+
+        if not video_record:
+            v_any_stmt = select(VideoFile).order_by(desc(VideoFile.created_at)).limit(1)
+            video_record = (await db.execute(v_any_stmt)).scalar_one_or_none()
+
+        effective_vid_id = video_record.id if video_record else str(uuid.uuid4())
+        effective_fps = video_record.fps if video_record else 25.0
+        effective_frames = video_record.frame_count if video_record else 250
+
+        sample_fps = (payload.sample_fps if payload and payload.sample_fps else None) or (task.video_config or {}).get("sample_fps") or 2.0
+        sample_step = max(1, int(round(effective_fps / max(sample_fps, 0.05))))
+        total_sampled = max(1, effective_frames // sample_step)
+
+        perspective = (
+            (payload.camera_perspective or payload.perspective if payload else None)
+            or (task.video_config or {}).get("camera_perspective")
+            or "FIXED_CCTV"
         )
 
-    # Determine video file / source
-    video_id = (payload.video_id if payload and hasattr(payload, "video_id") else None) or (task.video_config or {}).get("video_id")
-    video_record = None
-    if video_id:
-        video_record = await db.get(VideoFile, video_id)
+        detector = get_shared_detector()
+        job_id = str(uuid.uuid4())
 
-    if not video_record:
-        v_stmt = select(VideoFile).where(VideoFile.event_id == task.id).order_by(desc(VideoFile.created_at)).limit(1)
-        video_record = (await db.execute(v_stmt)).scalar_one_or_none()
+        job = ProcessingJob(
+            id=job_id,
+            event_id=task.id,
+            video_file_id=effective_vid_id,
+            camera_id=payload.camera_id if payload else None,
+            layout_id=task.layout_id,
+            camera_perspective=perspective,
+            status="RUNNING",
+            detector_backend=detector.backend_name,
+            sample_fps=sample_fps,
+            frames_processed=0,
+            total_sampled_frames=total_sampled,
+            progress_pct=0.0,
+            processing_fps=0.0,
+            avg_inference_ms=0.0,
+            max_people_detected=0,
+        )
+        db.add(job)
 
-    if not video_record:
-        v_any_stmt = select(VideoFile).order_by(desc(VideoFile.created_at)).limit(1)
-        video_record = (await db.execute(v_any_stmt)).scalar_one_or_none()
+        old_state = task.state
+        task.state = "PROCESSING"
+        task.updated_at = _utcnow()
 
-    effective_vid_id = video_record.id if video_record else str(uuid.uuid4())
-    effective_fps = video_record.fps if video_record else 25.0
-    effective_frames = video_record.frame_count if video_record else 250
+        hist = TaskHistory(
+            task_id=task.id,
+            event_type="PROCESSING_STARTED",
+            details={
+                "job_id": job_id,
+                "sample_fps": sample_fps,
+                "perspective": perspective,
+                "old_state": old_state,
+                "new_state": "PROCESSING",
+            },
+        )
+        db.add(hist)
+        await _sync_event_record(db, task)
+        await db.commit()
+        await db.refresh(job)
 
-    sample_fps = (payload.sample_fps if payload and payload.sample_fps else None) or (task.video_config or {}).get("sample_fps") or 2.0
-    sample_step = max(1, int(round(effective_fps / max(sample_fps, 0.05))))
-    total_sampled = max(1, effective_frames // sample_step)
+        VideoProcessor.launch_job(
+            job_id=job_id,
+            video_id=effective_vid_id,
+            event_id=task.id,
+            sample_fps=sample_fps,
+            camera_id=payload.camera_id if payload else None,
+            layout_id=task.layout_id,
+            camera_perspective=perspective,
+        )
 
-    perspective = (
-        (payload.camera_perspective or payload.perspective if payload else None)
-        or (task.video_config or {}).get("camera_perspective")
-        or "FIXED_CCTV"
-    )
-
-    detector = get_shared_detector()
-    job_id = str(uuid.uuid4())
-
-    job = ProcessingJob(
-        id=job_id,
-        event_id=task.id,
-        video_file_id=effective_vid_id,
-        camera_id=payload.camera_id if payload else None,
-        layout_id=task.layout_id,
-        camera_perspective=perspective,
-        status="RUNNING",
-        detector_backend=detector.backend_name,
-        sample_fps=sample_fps,
-        frames_processed=0,
-        total_sampled_frames=total_sampled,
-        progress_pct=0.0,
-        processing_fps=0.0,
-        avg_inference_ms=0.0,
-        max_people_detected=0,
-    )
-    db.add(job)
-
-    old_state = task.state
-    task.state = "PROCESSING"
-    task.updated_at = _utcnow()
-
-    hist = TaskHistory(
-        task_id=task.id,
-        event_type="PROCESSING_STARTED",
-        details={
-            "job_id": job_id,
-            "sample_fps": sample_fps,
-            "perspective": perspective,
-            "old_state": old_state,
-            "new_state": "PROCESSING",
-        },
-    )
-    db.add(hist)
-    await _sync_event_record(db, task)
-    await db.commit()
-
-    VideoProcessor.launch_job(
-        job_id=job_id,
-        video_id=effective_vid_id,
-        event_id=task.id,
-        sample_fps=sample_fps,
-        camera_id=payload.camera_id if payload else None,
-        layout_id=task.layout_id,
-        camera_perspective=perspective,
-    )
-
-    return ProcessingJobResponse.model_validate(job)
+        return ProcessingJobResponse.model_validate(job)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("start_task_processing failed", task_id=task_id, error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to start task analysis: {str(exc)}",
+        )
 
 
 @router.post("/{task_id}/pause")

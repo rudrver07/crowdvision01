@@ -54,7 +54,16 @@ _shared_detector: Optional[PersonDetector] = None
 def get_shared_detector() -> PersonDetector:
     global _shared_detector
     if _shared_detector is None:
-        _shared_detector = PersonDetector()
+        try:
+            _shared_detector = PersonDetector()
+        except Exception as exc:
+            logger.error("Failed to initialize PersonDetector", error=str(exc))
+            _shared_detector = PersonDetector.__new__(PersonDetector)
+            _shared_detector.backend_name = "geometric_motion_fallback"
+            _shared_detector._ultralytics_model = None
+            _shared_detector._onnx_net = None
+            _shared_detector._hog = None
+            _shared_detector._bg_subtractor = None
     return _shared_detector
 
 
@@ -161,11 +170,28 @@ class VideoProcessor:
                 job.layout_id = layout_id
             await session.commit()
 
+            def _resolve_candidate(cand_path: Optional[str]) -> Optional[str]:
+                if not cand_path:
+                    return None
+                if os.path.exists(cand_path) and os.path.isfile(cand_path):
+                    return cand_path
+                fname = Path(cand_path).name
+                for c in [
+                    get_settings().videos_dir / fname,
+                    Path(fname),
+                    Path("/app") / fname,
+                    Path("/app/backend/uploads/videos") / fname,
+                    Path("backend/uploads/videos") / fname,
+                ]:
+                    if c.exists() and c.is_file():
+                        return str(c)
+                return None
+
             video_path = None
             if video_id:
                 video = await session.get(VideoFile, video_id)
                 if video:
-                    video_path = video.stored_path
+                    video_path = _resolve_candidate(video.stored_path)
 
             event = await session.get(Event, event_id)
             venue_id = event.venue_id if event else None
@@ -175,16 +201,10 @@ class VideoProcessor:
             if not video_path and task and task.video_config:
                 vcfg = task.video_config
                 cand = vcfg.get("stored_path") or vcfg.get("source_uri") or vcfg.get("filename")
-                if cand:
-                    if os.path.exists(cand):
-                        video_path = cand
-                    elif (get_settings().videos_dir / Path(cand).name).exists():
-                        video_path = str(get_settings().videos_dir / Path(cand).name)
+                video_path = _resolve_candidate(cand)
 
             if not video_path and video_id:
-                cand = get_settings().videos_dir / Path(video_id).name
-                if cand.exists():
-                    video_path = str(cand)
+                video_path = _resolve_candidate(video_id)
 
             if not video_path:
                 default_file = get_settings().videos_dir / "sample_crowd_festival.mp4"
