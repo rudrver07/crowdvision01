@@ -6,7 +6,7 @@ from typing import Annotated, Optional
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import desc, func, select
+from sqlalchemy import case, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -127,7 +127,10 @@ async def list_tasks(
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
-    stmt = select(Task).order_by(desc(Task.created_at)).limit(limit).offset(offset)
+    stmt = select(Task).order_by(
+        case((Task.id == "task_railway_cctv_analysis", 0), else_=1),
+        desc(Task.created_at),
+    ).limit(limit).offset(offset)
     if state and state.upper() != "ALL":
         stmt = stmt.where(Task.state == state.upper())
     if search:

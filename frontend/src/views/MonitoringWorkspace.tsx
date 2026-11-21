@@ -722,7 +722,7 @@ export const MonitoringWorkspace: React.FC<MonitoringWorkspaceProps> = ({
     if (activeTask.video_config?.filename) {
       return `${apiPrefix}/uploads/videos/${activeTask.video_config.filename}`;
     }
-    return `${apiPrefix}/uploads/videos/sample_crowd_festival.mp4`;
+    return `${apiPrefix}/api/tasks/task_railway_cctv_analysis/video/stream`;
   }, [activeTask?.id, activeTask?.video_config]);
 
   const handleTogglePlay = () => {
@@ -1417,7 +1417,7 @@ export const MonitoringWorkspace: React.FC<MonitoringWorkspaceProps> = ({
             <div className="aspect-video bg-[#050811] relative flex items-center justify-center overflow-hidden select-none">
               {/* Ground-Truth Spatial Reference Background or Default Neutral Grid */}
               {(() => {
-                const layoutBg = activeTask?.layout_snapshot?.background_image_url || (activeTask?.id === 'task_railway_cctv_analysis' ? '/railway_cctv_reference.jpg' : null);
+                const layoutBg = activeTask?.layout_snapshot?.background_image_url || '/railway_cctv_reference.jpg';
                 if (layoutBg) {
                   return (
                     <>

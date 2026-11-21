@@ -60,13 +60,21 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Keep active task updated or pick Railway CCTV analysis first
       if (list.length > 0) {
         setActiveTask((prev) => {
-          if (!prev) {
-            const demoTask = list.find((t) => t.id === 'task_railway_cctv_analysis' || t.name === 'Railway CCTV analysis' || t.name === 'Railway Test');
+          const demoTask = list.find((t) => t.id === 'task_railway_cctv_analysis' || t.name === 'Railway CCTV analysis' || t.name === 'Railway Test');
+          const isInvalidOrTest = prev && (
+            prev.id.startsWith('task_exec_') ||
+            prev.id.startsWith('task_copilot_') ||
+            prev.name.includes('Execution Target Task') ||
+            prev.name.includes('Test Arena') ||
+            (!prev.layout_snapshot?.zones_data?.length && !!demoTask)
+          );
+
+          if (!prev || isInvalidOrTest) {
             const target = demoTask || list[0];
             syncActiveZones(target);
             return target;
           }
-          const updated = list.find((t) => t.id === prev.id) || list[0];
+          const updated = list.find((t) => t.id === prev.id) || demoTask || list[0];
           syncActiveZones(updated);
           return updated;
         });

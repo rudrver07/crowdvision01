@@ -376,8 +376,15 @@ async def stream_task_video(
 
     # Guaranteed persistent CCTV footage for demonstration scenario
     if task_id == "task_railway_cctv_analysis":
-        for cand in [settings.videos_dir / "cctvfootagerailway.mp4", settings.videos_dir / "railway_cctv_analysis.mp4"]:
-            if cand.exists():
+        for cand in [
+            settings.videos_dir / "cctvfootagerailway.mp4",
+            settings.videos_dir / "railway_cctv_analysis.mp4",
+            Path("cctvfootagerailway.mp4"),
+            Path("/app/cctvfootagerailway.mp4"),
+            Path("backend/uploads/videos/cctvfootagerailway.mp4"),
+            Path("/app/backend/uploads/videos/cctvfootagerailway.mp4"),
+        ]:
+            if cand.exists() and cand.is_file() and cand.stat().st_size > 0:
                 return stream_video_file(cand, request)
 
     # 1. Search VideoFile by event_id == task_id
@@ -411,10 +418,18 @@ async def stream_task_video(
             if direct_p.exists():
                 return stream_video_file(direct_p, request)
 
-    # 3. Fallback to sample video
-    sample = settings.videos_dir / "sample_crowd_festival.mp4"
-    if sample.exists():
-        return stream_video_file(sample, request)
+    # 3. Fallback to railway CCTV or sample video
+    for fallback_cand in [
+        settings.videos_dir / "cctvfootagerailway.mp4",
+        settings.videos_dir / "railway_cctv_analysis.mp4",
+        settings.videos_dir / "sample_crowd_festival.mp4",
+        Path("cctvfootagerailway.mp4"),
+        Path("/app/cctvfootagerailway.mp4"),
+        Path("backend/uploads/videos/cctvfootagerailway.mp4"),
+        Path("/app/backend/uploads/videos/cctvfootagerailway.mp4"),
+    ]:
+        if fallback_cand.exists() and fallback_cand.is_file() and fallback_cand.stat().st_size > 0:
+            return stream_video_file(fallback_cand, request)
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No video file found for this task")
 
