@@ -27,7 +27,7 @@ bcrypt>=4.0.0
 
 # Utilities
 pillow>=10.4.0
-python-dotenv>=1.0.1
+python-dotenv>=1.2.4
 orjson>=3.10.0
 tenacity>=9.0.0
 python-dateutil>=2.9.0
