@@ -17,7 +17,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     APP_ENV=production \
     PORT=10000 \
     APP_HOST=0.0.0.0 \
-    WEB_CONCURRENCY=1
+    WEB_CONCURRENCY=1 \
+    PIP_ROOT_USER_ACTION=ignore \
+    VIRTUAL_ENV=/opt/venv
+
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 WORKDIR /app
 
@@ -29,13 +33,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Create dedicated virtual environment
+RUN python -m venv $VIRTUAL_ENV
+
 # Install Python backend dependencies
 COPY requirements.txt ./
 COPY backend/requirements.txt ./backend/
 COPY ai_agent/requirements.txt ./ai_agent/
 
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --root-user-action=ignore --upgrade pip && \
+    pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 
 # Copy backend source, scripts, and assets
 COPY backend/ ./backend/

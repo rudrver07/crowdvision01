@@ -1,6 +1,10 @@
 #!/bin/sh
 set -e
 
+if [ -d "/opt/venv/bin" ]; then
+    export PATH="/opt/venv/bin:$PATH"
+fi
+
 echo "=== Starting CrowdVision AI Agent subsystem on 127.0.0.1:8100 ==="
 python -m uvicorn app.main:app --app-dir ai_agent --host 127.0.0.1 --port 8100 &
 
