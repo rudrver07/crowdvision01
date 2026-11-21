@@ -740,7 +740,7 @@ async def get_task_telemetry(
     # Fetch corresponding zone metrics
     m_stmt = (
         select(CrowdMetric)
-        .where(CrowdMetric.job_id == summary.job_id)
+        .where((CrowdMetric.job_id == summary.job_id) | (CrowdMetric.event_id == task_id))
         .where(func.abs(CrowdMetric.video_timestamp_sec - summary.video_timestamp_sec) < 0.35)
     )
     metrics = (await db.execute(m_stmt)).scalars().all()
@@ -748,7 +748,7 @@ async def get_task_telemetry(
     # Fetch corresponding zone risks
     r_stmt = (
         select(RiskAssessment)
-        .where(RiskAssessment.job_id == summary.job_id)
+        .where((RiskAssessment.job_id == summary.job_id) | (RiskAssessment.event_id == task_id))
         .where(func.abs(RiskAssessment.video_timestamp_sec - summary.video_timestamp_sec) < 0.35)
     )
     risks = (await db.execute(r_stmt)).scalars().all()

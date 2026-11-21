@@ -61,7 +61,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (list.length > 0) {
         setActiveTask((prev) => {
           if (!prev) {
-            const demoTask = list.find((t) => t.name === 'Railway CCTV analysis');
+            const demoTask = list.find((t) => t.id === 'task_railway_cctv_analysis' || t.name === 'Railway CCTV analysis' || t.name === 'Railway Test');
             const target = demoTask || list[0];
             syncActiveZones(target);
             return target;

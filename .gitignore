@@ -44,35 +44,37 @@ coverage.xml
 *.cert
 *.crt
 
-# ──── SQLite & Local Databases ────
-*.db
-*.sqlite
-*.sqlite3
-crowdvision_agent.db
-backend/crowdvision_main.db
-# Preserve pre-seeded Railway demo database for GitHub & production deployment
-!/crowdvision_main.db
+# # ──── SQLite & Local Databases ────
+# *.db
+# *.sqlite
+# *.sqlite3
+# crowdvision_agent.db
+# backend/crowdvision_main.db
+# # Preserve pre-seeded Railway demo database for GitHub & production deployment
+# !/crowdvision_main.db
 
-# ──── Media, Uploads & User Footage ────
-backend/uploads/videos/*
-!backend/uploads/videos/.gitkeep
-# Preserve Railway CCTV analysis demonstration video
-!backend/uploads/videos/cctvfootagerailway.mp4
-backend/uploads/images/*
-!backend/uploads/images/.gitkeep
-backend/uploads/floorplans/*
-!backend/uploads/floorplans/.gitkeep
-backend/uploads/processed/*
-!backend/uploads/processed/.gitkeep
-# Preserve precomputed Railway telemetry cache (<50KB)
-!backend/uploads/processed/railway_demo_telemetry.json
-# *.mp4
-*.avi
-*.mov
-*.mkv
-*.webm
-# Whitelist ground-truth Railway CCTV video (14.9 MB <= 100MB Git limit)
-!cctvfootagerailway.mp4
+# # ──── Media, Uploads & User Footage ────
+# backend/uploads/videos/*
+# !backend/uploads/videos/.gitkeep
+# # Preserve Railway CCTV analysis demonstration video
+# !backend/uploads/videos/cctvfootagerailway.mp4
+# backend/uploads/images/*
+# !backend/uploads/images/.gitkeep
+# backend/uploads/floorplans/*
+# !backend/uploads/floorplans/.gitkeep
+# backend/uploads/processed/*
+# !backend/uploads/processed/.gitkeep
+# # Preserve precomputed Railway telemetry cache (<50KB)
+# !backend/uploads/processed/railway_demo_telemetry.json
+# # Preserve precomputed Railway telemetry cache (<50KB)
+# !backend/uploads/processed/railway_demo_telemetry.json
+# # *.mp4
+# *.avi
+# *.mov
+# *.mkv
+# *.webm
+# # Whitelist ground-truth Railway CCTV video (14.9 MB <= 100MB Git limit)
+# !cctvfootagerailway.mp4
 
 # ──── Model Artifacts & Weights ────
 *.pt

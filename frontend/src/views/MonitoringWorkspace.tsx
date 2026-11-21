@@ -788,8 +788,10 @@ export const MonitoringWorkspace: React.FC<MonitoringWorkspaceProps> = ({
     if (!videoRef.current) return;
     setVideoError(false);
     setVideoLoading(true);
+    const rawApi = (import.meta as any).env?.VITE_API_BASE_URL || '';
+    const apiPrefix = rawApi ? String(rawApi).replace(/\/$/, '') : '';
     const retrySrc = activeTask?.id === 'task_railway_cctv_analysis'
-      ? `/api/tasks/task_railway_cctv_analysis/video/stream?t=${Date.now()}`
+      ? `${apiPrefix}/api/tasks/task_railway_cctv_analysis/video/stream?t=${Date.now()}`
       : `${videoSourceUrl}${videoSourceUrl.includes('?') ? '&' : '?'}t=${Date.now()}`;
     videoRef.current.src = retrySrc;
     videoRef.current.load();
@@ -1181,8 +1183,10 @@ export const MonitoringWorkspace: React.FC<MonitoringWorkspaceProps> = ({
                   }
                 }}
                 onError={() => {
+                  const rawApi = (import.meta as any).env?.VITE_API_BASE_URL || '';
+                  const apiPrefix = rawApi ? String(rawApi).replace(/\/$/, '') : '';
                   if (videoRef.current && activeTask?.id === 'task_railway_cctv_analysis' && !videoRef.current.src.includes('cctvfootagerailway.mp4')) {
-                    videoRef.current.src = '/uploads/videos/cctvfootagerailway.mp4';
+                    videoRef.current.src = `${apiPrefix}/uploads/videos/cctvfootagerailway.mp4`;
                     videoRef.current.load();
                     videoRef.current.play().catch(() => {});
                     return;

@@ -57,8 +57,8 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = 30.0
     llm_enabled: bool = True
 
-    ai_agent_base_url: str = "http://localhost:8001"
-    ai_agent_url: str = "http://localhost:8001"
+    ai_agent_base_url: str = "http://localhost:8100"
+    ai_agent_url: str = "http://localhost:8100"
     ai_agent_api_key: str = "CHANGE_ME_TO_A_RANDOM_SECRET_KEY"
     ai_agent_timeout_seconds: float = 5.0
     ai_agent_enabled: bool = True
