@@ -155,6 +155,39 @@ export class VoiceAlertService {
     this.notifyListeners();
   }
 
+  /**
+   * Narrate an alert notification immediately without waiting for the 17-second window.
+   */
+  public narrateAlertImmediately(alert: any): void {
+    if (!alert) return;
+    this.unlockAudio();
+    const language = this.controller.getLanguage();
+    const zoneId = String(alert.zone_id || alert.zoneId || alert.zone_name || 'zone-boarding-edge').trim();
+    const zoneName = String(alert.zone_name || alert.zoneName || 'Train Door Boarding & Clearance Zone').trim();
+    const severity = String(alert.severity || 'CRITICAL').toUpperCase();
+    const category = String(alert.category || 'critical_density').toLowerCase();
+    const isCritical = severity === 'CRITICAL';
+    const alertId = String(alert.id || alert.alert_id || `imm_${Date.now()}`);
+    const spokenText = formatOperationalAnnouncement(alert, language);
+
+    const announcement: AnnouncementItem = {
+      id: `ann_imm_${alertId}_${Date.now()}`,
+      alertId,
+      eventId: alert.event_id,
+      zoneId,
+      zoneName,
+      severity,
+      category,
+      text: spokenText,
+      language,
+      timestamp: Date.now(),
+      isCritical,
+    };
+
+    this.controller.enqueue(announcement);
+    this.notifyListeners();
+  }
+
   // ── Public Controls ──────────────────────────────────────────────
   public toggleMute(): void {
     const current = this.controller.getIsMuted();

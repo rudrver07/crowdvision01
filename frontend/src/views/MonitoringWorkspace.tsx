@@ -254,7 +254,9 @@ export const MonitoringWorkspace: React.FC<MonitoringWorkspaceProps> = ({
         category: 'critical_density',
         occupancy: 96,
         title: 'CRITICAL HAZARD: Platform Edge Passenger Surge & Doorway Bottleneck',
-        message: 'Train Door Boarding & Clearance Zone capacity reached 96%. Severe boarding bottleneck detected.',
+        message: 'Severe passenger surge and doorway bottleneck detected at Platform 1 EMU Coach 6008B doorway. Real-time capacity reached 96%. Immediate platform clearance required.',
+        spoken_text: 'Attention. Critical crowd surge and doorway bottleneck detected at Platform 1 Train Door Boarding Zone. Occupancy has reached 96 percent. Please clear the platform edge immediately.',
+        spoken_text_hi: 'सावधान। प्लेटफॉर्म 1 पर ट्रेन डोर बोर्डिंग ज़ोन में अत्यधिक भीड़ और रुकावट दर्ज की गई है। ऑक्यूपेंसी 96 प्रतिशत तक पहुंच गई है। कृपया तुरंत पीली सुरक्षा रेखा से पीछे हटें।',
       };
     }
 
@@ -289,6 +291,45 @@ export const MonitoringWorkspace: React.FC<MonitoringWorkspaceProps> = ({
       }
     }
   }, [activeTask?.id, currentTime, triggerAiNotification]);
+
+  const handleTriggerRailwayAlert = useCallback(() => {
+    voiceAlertService.unlockAudio();
+    const currentLoop = loopCycleRef.current;
+    const railwayAlertTitle = 'CRITICAL HAZARD: Platform Edge Passenger Surge & Doorway Bottleneck';
+    const railwayAlertMessage = 'Severe passenger surge and doorway bottleneck detected at Platform 1 EMU Coach 6008B doorway. Real-time capacity reached 96%. Immediate platform clearance required.';
+    const spokenEnglish = 'Attention. Critical crowd surge and doorway bottleneck detected at Platform 1 Train Door Boarding Zone. Occupancy has reached 96 percent. Please clear the platform edge immediately.';
+    const spokenHindi = 'सावधान। प्लेटफॉर्म 1 पर ट्रेन डोर बोर्डिंग ज़ोन में अत्यधिक भीड़ और रुकावट दर्ज की गई है। ऑक्यूपेंसी 96 प्रतिशत तक पहुंच गई है। कृपया तुरंत पीली सुरक्षा रेखा से पीछे हटें।';
+
+    const alertObj = {
+      id: `alert_railway_boarding_surge_manual_${Date.now()}`,
+      event_id: activeTask?.id || 'task_railway_cctv_analysis',
+      zone_id: 'zone-boarding-edge',
+      zone_name: 'Train Door Boarding & Clearance Zone',
+      severity: 'CRITICAL',
+      category: 'critical_density',
+      occupancy: 96,
+      title: railwayAlertTitle,
+      message: railwayAlertMessage,
+      spoken_text: spokenEnglish,
+      spoken_text_hi: spokenHindi,
+      supporting_measurements: {
+        occupancy_ratio: 0.96,
+      },
+      occupancyPct: 96,
+    };
+
+    triggerAiNotification({
+      id: alertObj.id,
+      loopCycle: currentLoop,
+      zoneName: alertObj.zone_name,
+      severity: alertObj.severity,
+      message: alertObj.message,
+      occupancyPct: 96,
+      timestamp: new Date().toLocaleTimeString(),
+    });
+
+    voiceAlertService.narrateAlertImmediately(alertObj);
+  }, [activeTask?.id, triggerAiNotification]);
 
   // ResizeObserver for exact video overlay sizing
   useEffect(() => {
@@ -1135,6 +1176,17 @@ export const MonitoringWorkspace: React.FC<MonitoringWorkspaceProps> = ({
             </div>
           )}
 
+          {activeTask.id === 'task_railway_cctv_analysis' && (
+            <button
+              onClick={handleTriggerRailwayAlert}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-red-600/90 hover:bg-red-500 text-white font-medium text-xs shadow-md shadow-red-500/20 transition-all"
+              title="Narrate Railway Alert Notification via ElevenLabs"
+            >
+              <Volume2 className="h-3.5 w-3.5" />
+              <span>Narrate Railway Alert</span>
+            </button>
+          )}
+
           <button
             onClick={onOpenLayoutBuilder}
             className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs transition-colors"
@@ -1177,6 +1229,14 @@ export const MonitoringWorkspace: React.FC<MonitoringWorkspaceProps> = ({
                 <span className="text-sm font-black text-red-400">{aiNotification.occupancyPct}%</span>
               </div>
             )}
+            <button
+              onClick={() => voiceAlertService.narrateAlertImmediately(aiNotification)}
+              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-md shadow-red-500/30 transition-all whitespace-nowrap"
+              title="Narrate this alert notification with ElevenLabs Voice"
+            >
+              <Volume2 className="h-3.5 w-3.5" />
+              <span>Narrate Voice</span>
+            </button>
             <button
               onClick={() => setAiNotification(null)}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
