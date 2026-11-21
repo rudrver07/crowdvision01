@@ -33,7 +33,7 @@ tenacity>=9.0.0
 python-dateutil>=2.9.0
 
 # Monitoring
-structlog>=24.4.0
+structlog>=26.1.0
 prometheus-client>=0.21.0
 
 # Testing
