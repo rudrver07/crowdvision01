@@ -5,10 +5,8 @@ from typing import Annotated, Optional
 import io
 from pathlib import Path
 import uuid
-try:
-    from PIL import Image as PILImage
-except ImportError:
-    PILImage = None
+import cv2
+import numpy as np
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import desc, select
@@ -209,31 +207,18 @@ async def upload_background_image(
             detail=f"Image file exceeds maximum size of {settings.max_image_size_mb}MB",
         )
 
-    width, height = 0, 0
-    if PILImage is not None:
-        try:
-            pil_img = PILImage.open(io.BytesIO(content))
-            width, height = pil_img.size
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid or unreadable image file: {str(e)}",
-            )
-    else:
-        try:
-            import cv2
-            import numpy as np
-            nparr = np.frombuffer(content, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if img is not None:
-                height, width = img.shape[:2]
-            else:
-                raise ValueError("cv2.imdecode could not decode image")
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid or unreadable image file: {str(e)}",
-            )
+    try:
+        nparr = np.frombuffer(content, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is not None:
+            height, width = img.shape[:2]
+        else:
+            raise ValueError("Could not decode image content")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid or unreadable image file: {str(e)}",
+        )
 
     clean_name = Path(file.filename or "background.jpg").name.replace(" ", "_")
     stored_name = f"{uuid.uuid4().hex[:12]}_{clean_name}"
