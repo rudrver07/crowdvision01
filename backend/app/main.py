@@ -104,6 +104,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router, prefix="/api/chat", tags=["AI Analyst"])
     app.include_router(health.router, prefix="/api/health", tags=["Health"])
     app.include_router(health.router, prefix="/health", tags=["Health"])
+    app.include_router(health.router, prefix="/healthz", tags=["Health"])
     app.include_router(ws_router, tags=["WebSocket"])
 
     # Mount frontend static distribution if built

@@ -29,6 +29,7 @@ def _utcnow() -> datetime:
 @router.get("", response_model=HealthResponse)
 @router.get("/", response_model=HealthResponse, include_in_schema=False)
 @router.get("/health", response_model=HealthResponse, include_in_schema=False)
+@router.get("/healthz", response_model=HealthResponse, include_in_schema=False)
 async def health_check(db: Annotated[AsyncSession, Depends(get_db)]):
     db_status = "healthy"
     try:

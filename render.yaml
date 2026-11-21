@@ -16,6 +16,8 @@ services:
         value: production
       - key: APP_LOG_LEVEL
         value: INFO
+      - key: WEB_CONCURRENCY
+        value: "1"
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: LLM_PROVIDER
