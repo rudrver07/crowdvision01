@@ -6,17 +6,6 @@ import type { VoiceLanguage } from './types.ts';
  * Uses strictly verified fields from the source alert. Never fabricates values or locations.
  */
 export function formatOperationalAnnouncement(alert: any, language: VoiceLanguage = 'en'): string {
-  // If alert carries custom spoken text / narration message, prioritize it
-  if (language === 'hi' && alert.spoken_text_hi) {
-    return alert.spoken_text_hi;
-  }
-  if (language === 'en' && alert.spoken_text) {
-    return alert.spoken_text;
-  }
-  if (alert.spoken_text && typeof alert.spoken_text === 'string') {
-    return alert.spoken_text;
-  }
-
   const zoneName = String(alert.zone_name || alert.zoneName || 'Designated Zone').trim();
   const severity = String(alert.severity || 'HIGH').toUpperCase();
   const category = String(alert.category || 'occupancy_warning').toLowerCase();

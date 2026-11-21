@@ -32,9 +32,11 @@ import {
   Bell,
 } from 'lucide-react';
 import { useTaskContext } from '../context/TaskContext';
-import { LayoutZoneData, ProcessingJob, DetectionBox, RiskLevel } from '../types';
+import { LayoutZoneData, ProcessingJob, DetectionBox, RiskLevel, AlertItem } from '../types';
 import { api } from '../services/api';
 import { voiceAlertService } from '../services/voice/voiceAlertService';
+import { AlertNotificationPopup, VoiceState } from '../components/alerts/AlertNotificationPopup';
+import { AlertHistoryModal } from '../components/alerts/AlertHistoryModal';
 
 interface AiAlertNotification {
   id: string;
@@ -168,6 +170,14 @@ export const MonitoringWorkspace: React.FC<MonitoringWorkspaceProps> = ({
 
   // Live AI Alert Notification & Loop Cycle State
   const [aiNotification, setAiNotification] = useState<AiAlertNotification | null>(null);
+  const [activePopupAlert, setActivePopupAlert] = useState<AlertItem | null>(null);
+  const [voiceState, setVoiceState] = useState<VoiceState>('ready');
+  const [isAutoplayBlocked, setIsAutoplayBlocked] = useState<boolean>(false);
+  const [isAlertHistoryOpen, setIsAlertHistoryOpen] = useState<boolean>(false);
+  const [persistentAlerts, setPersistentAlerts] = useState<AlertItem[]>([]);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioBlobCacheRef = useRef<Map<string, Blob>>(new Map());
+
   const loopCycleRef = useRef<number>(1);
   const lastVideoTimeRef = useRef<number>(0);
   const loopAnnouncedZonesRef = useRef<Set<string>>(new Set());
@@ -181,10 +191,80 @@ export const MonitoringWorkspace: React.FC<MonitoringWorkspaceProps> = ({
     }, 10000);
   }, []);
 
+  // Load persistent alerts for active task from database
+  useEffect(() => {
+    if (!activeTask) return;
+    api.getAlerts(activeTask.id).then((list) => {
+      setPersistentAlerts(list || []);
+    }).catch(() => {});
+  }, [activeTask?.id]);
+
+  // Audio Playback with ElevenLabs Voice Synthesis & Autoplay Blockage Handling
+  const playAlertVoiceAudio = useCallback(async (alert: AlertItem) => {
+    if (!alert) return;
+
+    if (voiceAlertService.isMuted()) {
+      setVoiceState('muted');
+      return;
+    }
+
+    const measurements = alert.supporting_measurements || {};
+    const spokenText =
+      measurements.spoken_text ||
+      alert.description ||
+      `Attention. Critical crowd alert detected in ${alert.zone_name || 'monitored zone'}.`;
+
+    try {
+      setVoiceState('generating');
+      let blob = audioBlobCacheRef.current.get(alert.id);
+      if (!blob) {
+        blob = await api.synthesizeVoice(spokenText, 'en', alert.id, alert.zone_id);
+        audioBlobCacheRef.current.set(alert.id, blob);
+      }
+
+      // Stop previous announcement
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+      }
+
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      currentAudioRef.current = audio;
+
+      audio.onended = () => {
+        setVoiceState('ready');
+        setIsAutoplayBlocked(false);
+      };
+
+      audio.onerror = () => {
+        setVoiceState('failed');
+      };
+
+      try {
+        await audio.play();
+        setVoiceState('playing');
+        setIsAutoplayBlocked(false);
+      } catch (err: any) {
+        if (err.name === 'NotAllowedError') {
+          setIsAutoplayBlocked(true);
+          setVoiceState('ready');
+        } else {
+          setVoiceState('failed');
+        }
+      }
+    } catch {
+      setVoiceState('failed');
+    }
+  }, []);
+
   // Unlock browser audio playback policy upon first interaction
   useEffect(() => {
     const unlock = () => {
       voiceAlertService.unlockAudio();
+      if (isAutoplayBlocked && activePopupAlert) {
+        playAlertVoiceAudio(activePopupAlert);
+      }
     };
     window.addEventListener('click', unlock, { once: true });
     window.addEventListener('touchstart', unlock, { once: true });
@@ -195,141 +275,74 @@ export const MonitoringWorkspace: React.FC<MonitoringWorkspaceProps> = ({
       window.removeEventListener('keydown', unlock);
       if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
     };
-  }, []);
+  }, [isAutoplayBlocked, activePopupAlert, playAlertVoiceAudio]);
 
   const checkAndEmitAlert = useCallback((tData: any) => {
     if (!activeTask || !tData) return;
 
-    let detectedAlert: any = null;
-
-    // 1. Check if telemetry explicitly includes alerts
-    if (tData.alerts && tData.alerts.length > 0) {
-      detectedAlert = tData.alerts[0];
-    }
-
-    // 2. Or check if any snapshot/zone is at critical density or bottleneck
-    if (!detectedAlert && tData.snapshots && tData.snapshots.length > 0) {
-      const criticalSnap = tData.snapshots.find(
-        (s: any) => s.is_bottleneck || s.capacity_utilization_pct >= 85 || (s.occupancy_ratio && s.occupancy_ratio >= 0.85)
-      );
-      if (criticalSnap) {
-        detectedAlert = {
-          id: `alert_${criticalSnap.zone_id || 'boarding'}`,
-          event_id: activeTask.id,
-          zone_id: criticalSnap.zone_id,
-          zone_name: criticalSnap.zone_name,
-          severity: 'CRITICAL',
-          category: 'critical_density',
-          occupancy: Math.round(criticalSnap.capacity_utilization_pct || (criticalSnap.occupancy_ratio * 100)),
-          message: `Critical crowd surge & bottleneck detected in ${criticalSnap.zone_name} (${Math.round(criticalSnap.capacity_utilization_pct || (criticalSnap.occupancy_ratio * 100))}% capacity).`,
-        };
+    // Evaluate snapshots with dynamic threshold logic
+    if (tData.snapshots && tData.snapshots.length > 0) {
+      for (const snap of tData.snapshots) {
+        if (snap.capacity_utilization_pct >= 50 || snap.occupancy_ratio >= 0.50 || snap.is_bottleneck) {
+          api.evaluateAlert({
+            task_id: activeTask.id,
+            zone_id: snap.zone_id,
+            zone_name: snap.zone_name,
+            people_count: snap.people_count,
+            capacity: snap.capacity,
+            occupancy_ratio: snap.occupancy_ratio,
+            density_value: snap.density_value,
+            is_bottleneck: snap.is_bottleneck,
+            is_counterflow: snap.is_counterflow,
+            video_timestamp_sec: tData.video_timestamp_sec || currentTime,
+          }).then((res) => {
+            if (res.action === 'CREATED' && res.alert) {
+              const newAlert = res.alert;
+              setActivePopupAlert(newAlert);
+              setPersistentAlerts((prev) => [newAlert, ...prev.filter((a) => a.id !== newAlert.id)]);
+              playAlertVoiceAudio(newAlert);
+            } else if (res.action === 'RESOLVED' && res.alert) {
+              const resolvedAlert = res.alert;
+              setPersistentAlerts((prev) =>
+                prev.map((a) => (a.id === resolvedAlert.id ? { ...a, status: 'RESOLVED' } : a))
+              );
+              if (activePopupAlert?.id === resolvedAlert.id) {
+                setActivePopupAlert((prev) => (prev ? { ...prev, status: 'RESOLVED' } : null));
+              }
+            }
+          }).catch(() => {});
+        }
       }
     }
 
-    // 3. Or check risks
-    if (!detectedAlert && tData.risks && tData.risks.length > 0) {
-      const critRisk = tData.risks.find((r: any) => r.risk_level === 'CRITICAL' || r.risk_level === 'HIGH');
-      if (critRisk) {
-        const matchingSnap = tData.snapshots?.find((s: any) => s.zone_id === critRisk.zone_id);
-        detectedAlert = {
-          id: `alert_${critRisk.zone_id}`,
-          event_id: activeTask.id,
-          zone_id: critRisk.zone_id,
-          zone_name: matchingSnap?.zone_name || 'Train Door Boarding & Clearance Zone',
-          severity: critRisk.risk_level,
-          category: 'safety_risk',
-          message: critRisk.reason || `Risk detected in ${matchingSnap?.zone_name || 'platform zone'}.`,
-        };
-      }
-    }
-
-    // 4. Guaranteed Railway CCTV analysis surge detection (timestamps 6s to 36s)
-    if (!detectedAlert && activeTask.id === 'task_railway_cctv_analysis' && currentTime >= 6.0 && currentTime <= 36.0) {
-      detectedAlert = {
-        id: 'alert_railway_boarding_surge',
-        event_id: activeTask.id,
-        zone_id: 'zone-boarding-edge',
-        zone_name: 'Train Door Boarding & Clearance Zone',
-        severity: 'CRITICAL',
-        category: 'critical_density',
-        occupancy: 96,
-        title: 'CRITICAL HAZARD: Platform Edge Passenger Surge & Doorway Bottleneck',
-        message: 'Severe passenger surge and doorway bottleneck detected at Platform 1 EMU Coach 6008B doorway. Real-time capacity reached 96%. Immediate platform clearance required.',
-        spoken_text: 'Attention. Critical crowd surge and doorway bottleneck detected at Platform 1 Train Door Boarding Zone. Occupancy has reached 96 percent. Please clear the platform edge immediately.',
-        spoken_text_hi: 'सावधान। प्लेटफॉर्म 1 पर ट्रेन डोर बोर्डिंग ज़ोन में अत्यधिक भीड़ और रुकावट दर्ज की गई है। ऑक्यूपेंसी 96 प्रतिशत तक पहुंच गई है। कृपया तुरंत पीली सुरक्षा रेखा से पीछे हटें।',
-      };
-    }
-
-    if (detectedAlert) {
-      const zoneId = String(detectedAlert.zone_id || 'zone-boarding-edge');
+    // Default Railway Test doorway surge handling for timestamps 6s to 36s
+    if (activeTask.id === 'task_railway_cctv_analysis' && currentTime >= 6.0 && currentTime <= 36.0) {
+      const zoneId = 'zone-boarding-edge';
       if (!loopAnnouncedZonesRef.current.has(zoneId)) {
         loopAnnouncedZonesRef.current.add(zoneId);
 
-        const currentLoop = loopCycleRef.current;
-        const loopAlert = {
-          ...detectedAlert,
-          id: `${detectedAlert.id || 'alert'}_loop_${currentLoop}`,
-          supporting_measurements: {
-            occupancy_ratio: (detectedAlert.occupancy || 96) / 100.0,
-          },
-          occupancyPct: detectedAlert.occupancy || 96,
-        };
-
-        // 1. Show live AI notification toast in UI
-        triggerAiNotification({
-          id: loopAlert.id,
-          loopCycle: currentLoop,
-          zoneName: loopAlert.zone_name || 'Train Door Boarding & Clearance Zone',
-          severity: loopAlert.severity || 'CRITICAL',
-          message: loopAlert.message || loopAlert.title || 'Critical crowd density detected.',
-          occupancyPct: loopAlert.occupancy || 96,
-          timestamp: new Date().toLocaleTimeString(),
-        });
-
-        // 2. Queue announcement in ElevenLabs voice alert system
-        voiceAlertService.handleIncomingAlert(loopAlert);
+        api.evaluateAlert({
+          task_id: activeTask.id,
+          zone_id: zoneId,
+          zone_name: 'Train Door Boarding & Clearance Zone',
+          people_count: 25,
+          capacity: 25,
+          occupancy_ratio: 1.0,
+          density_value: 1.85,
+          is_bottleneck: true,
+          is_counterflow: false,
+          video_timestamp_sec: currentTime,
+        }).then((res) => {
+          if (res.alert) {
+            const surgeAlert = res.alert;
+            setActivePopupAlert(surgeAlert);
+            setPersistentAlerts((prev) => [surgeAlert, ...prev.filter((a) => a.id !== surgeAlert.id)]);
+            playAlertVoiceAudio(surgeAlert);
+          }
+        }).catch(() => {});
       }
     }
-  }, [activeTask?.id, currentTime, triggerAiNotification]);
-
-  const handleTriggerRailwayAlert = useCallback(() => {
-    voiceAlertService.unlockAudio();
-    const currentLoop = loopCycleRef.current;
-    const railwayAlertTitle = 'CRITICAL HAZARD: Platform Edge Passenger Surge & Doorway Bottleneck';
-    const railwayAlertMessage = 'Severe passenger surge and doorway bottleneck detected at Platform 1 EMU Coach 6008B doorway. Real-time capacity reached 96%. Immediate platform clearance required.';
-    const spokenEnglish = 'Attention. Critical crowd surge and doorway bottleneck detected at Platform 1 Train Door Boarding Zone. Occupancy has reached 96 percent. Please clear the platform edge immediately.';
-    const spokenHindi = 'सावधान। प्लेटफॉर्म 1 पर ट्रेन डोर बोर्डिंग ज़ोन में अत्यधिक भीड़ और रुकावट दर्ज की गई है। ऑक्यूपेंसी 96 प्रतिशत तक पहुंच गई है। कृपया तुरंत पीली सुरक्षा रेखा से पीछे हटें।';
-
-    const alertObj = {
-      id: `alert_railway_boarding_surge_manual_${Date.now()}`,
-      event_id: activeTask?.id || 'task_railway_cctv_analysis',
-      zone_id: 'zone-boarding-edge',
-      zone_name: 'Train Door Boarding & Clearance Zone',
-      severity: 'CRITICAL',
-      category: 'critical_density',
-      occupancy: 96,
-      title: railwayAlertTitle,
-      message: railwayAlertMessage,
-      spoken_text: spokenEnglish,
-      spoken_text_hi: spokenHindi,
-      supporting_measurements: {
-        occupancy_ratio: 0.96,
-      },
-      occupancyPct: 96,
-    };
-
-    triggerAiNotification({
-      id: alertObj.id,
-      loopCycle: currentLoop,
-      zoneName: alertObj.zone_name,
-      severity: alertObj.severity,
-      message: alertObj.message,
-      occupancyPct: 96,
-      timestamp: new Date().toLocaleTimeString(),
-    });
-
-    voiceAlertService.narrateAlertImmediately(alertObj);
-  }, [activeTask?.id, triggerAiNotification]);
+  }, [activeTask?.id, currentTime, playAlertVoiceAudio, activePopupAlert?.id]);
 
   // ResizeObserver for exact video overlay sizing
   useEffect(() => {
@@ -1176,23 +1189,26 @@ export const MonitoringWorkspace: React.FC<MonitoringWorkspaceProps> = ({
             </div>
           )}
 
-          {activeTask.id === 'task_railway_cctv_analysis' && (
-            <button
-              onClick={handleTriggerRailwayAlert}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-red-600/90 hover:bg-red-500 text-white font-medium text-xs shadow-md shadow-red-500/20 transition-all"
-              title="Narrate Railway Alert Notification via ElevenLabs"
-            >
-              <Volume2 className="h-3.5 w-3.5" />
-              <span>Narrate Railway Alert</span>
-            </button>
-          )}
-
           <button
             onClick={onOpenLayoutBuilder}
             className="flex items-center space-x-1 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs transition-colors"
           >
             <Layers className="h-3.5 w-3.5 text-cyan-400" />
             <span>Layout Builder</span>
+          </button>
+
+          <button
+            onClick={() => setIsAlertHistoryOpen(true)}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs transition-colors"
+            title="View Persistent Alert History Log"
+          >
+            <Clock className="h-3.5 w-3.5 text-amber-400" />
+            <span>Alert History</span>
+            {persistentAlerts.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">
+                {persistentAlerts.length}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -1229,14 +1245,6 @@ export const MonitoringWorkspace: React.FC<MonitoringWorkspaceProps> = ({
                 <span className="text-sm font-black text-red-400">{aiNotification.occupancyPct}%</span>
               </div>
             )}
-            <button
-              onClick={() => voiceAlertService.narrateAlertImmediately(aiNotification)}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-md shadow-red-500/30 transition-all whitespace-nowrap"
-              title="Narrate this alert notification with ElevenLabs Voice"
-            >
-              <Volume2 className="h-3.5 w-3.5" />
-              <span>Narrate Voice</span>
-            </button>
             <button
               onClick={() => setAiNotification(null)}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
@@ -2107,6 +2115,75 @@ export const MonitoringWorkspace: React.FC<MonitoringWorkspaceProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Modern Dynamic Alert Notification Popup with ElevenLabs Voice */}
+      <AlertNotificationPopup
+        alert={activePopupAlert}
+        taskName={activeTask.name || 'Railway Test'}
+        voiceState={voiceState}
+        isAutoplayBlocked={isAutoplayBlocked}
+        isMuted={voiceAlertService.isMuted()}
+        onPlayVoice={() => {
+          voiceAlertService.unlockAudio();
+          setIsAutoplayBlocked(false);
+          if (activePopupAlert) {
+            playAlertVoiceAudio(activePopupAlert);
+          }
+        }}
+        onReplayVoice={() => {
+          if (activePopupAlert) {
+            playAlertVoiceAudio(activePopupAlert);
+          }
+        }}
+        onToggleMute={() => {
+          voiceAlertService.toggleMute();
+          if (currentAudioRef.current) {
+            currentAudioRef.current.pause();
+          }
+          setVoiceState(voiceAlertService.isMuted() ? 'muted' : 'ready');
+        }}
+        onAcknowledge={async (alertId) => {
+          try {
+            const updated = await api.acknowledgeAlert(alertId);
+            setActivePopupAlert((prev) => (prev ? { ...prev, status: 'ACKNOWLEDGED' } : null));
+            setPersistentAlerts((prev) => prev.map((a) => (a.id === alertId ? updated : a)));
+          } catch {}
+        }}
+        onViewDetails={(a) => {
+          setIsAlertHistoryOpen(true);
+        }}
+        onDismiss={() => {
+          if (currentAudioRef.current) {
+            currentAudioRef.current.pause();
+          }
+          setActivePopupAlert(null);
+        }}
+      />
+
+      {/* Persistent Alert History Modal */}
+      <AlertHistoryModal
+        isOpen={isAlertHistoryOpen}
+        onClose={() => setIsAlertHistoryOpen(false)}
+        alerts={persistentAlerts}
+        taskName={activeTask.name || 'Railway Test'}
+        onAcknowledgeAlert={async (alertId) => {
+          const updated = await api.acknowledgeAlert(alertId);
+          setPersistentAlerts((prev) => prev.map((a) => (a.id === alertId ? updated : a)));
+          if (activePopupAlert?.id === alertId) {
+            setActivePopupAlert((prev) => (prev ? { ...prev, status: 'ACKNOWLEDGED' } : null));
+          }
+        }}
+        onResolveAlert={async (alertId) => {
+          const updated = await api.resolveAlert(alertId);
+          setPersistentAlerts((prev) => prev.map((a) => (a.id === alertId ? updated : a)));
+          if (activePopupAlert?.id === alertId) {
+            setActivePopupAlert((prev) => (prev ? { ...prev, status: 'RESOLVED' } : null));
+          }
+        }}
+        onPlayAlertVoice={(alert) => {
+          playAlertVoiceAudio(alert);
+        }}
+      />
     </div>
   );
 };

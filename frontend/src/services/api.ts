@@ -264,14 +264,45 @@ class ApiService {
     const params = new URLSearchParams();
     if (eventId) params.append('event_id', eventId);
     if (status) params.append('status', status);
-    const query = params.toString() ? `?${params.toString()}` : '';
-    return this.request<AlertItem[]>(`/alerts${query}`);
+    return this.request<AlertItem[]>(`/alerts/?${params.toString()}`);
   }
 
   async updateAlertStatus(alertId: string, status: 'ACKNOWLEDGED' | 'RESOLVED'): Promise<AlertItem> {
     return this.request<AlertItem>(`/alerts/${alertId}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
+    });
+  }
+
+  async acknowledgeAlert(alertId: string, note?: string): Promise<AlertItem> {
+    return this.request<AlertItem>(`/alerts/${alertId}/acknowledge`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    });
+  }
+
+  async resolveAlert(alertId: string, resolutionNote?: string): Promise<AlertItem> {
+    return this.request<AlertItem>(`/alerts/${alertId}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ resolution_note: resolutionNote }),
+    });
+  }
+
+  async evaluateAlert(data: {
+    task_id: string;
+    zone_id: string;
+    zone_name: string;
+    people_count: number;
+    capacity: number;
+    occupancy_ratio: number;
+    density_value: number;
+    is_bottleneck: boolean;
+    is_counterflow: boolean;
+    video_timestamp_sec: number;
+  }): Promise<{ action: 'CREATED' | 'RESOLVED' | 'SUPPRESSED_COOLDOWN' | 'NORMAL'; severity: string; alert?: AlertItem }> {
+    return this.request('/alerts/evaluate', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   }
 
@@ -572,6 +603,28 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify({ client_id: clientId }),
     });
+  }
+
+  async synthesizeVoice(text: string, language: string = 'en', alertId?: string, zoneId?: string): Promise<Blob> {
+    const rawApi = (import.meta as any).env?.VITE_API_BASE_URL || '';
+    const apiPrefix = rawApi ? String(rawApi).replace(/\/$/, '') : '';
+    const url = `${apiPrefix}/api/voice/tts`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text,
+        language,
+        alert_id: alertId,
+        zone_id: zoneId,
+      }),
+    });
+    if (!res.ok) {
+      throw new Error(`Voice synthesis failed: ${res.statusText}`);
+    }
+    return res.blob();
   }
 }
 
