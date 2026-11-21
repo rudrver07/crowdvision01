@@ -36,6 +36,12 @@ async def init_db() -> bool:
     settings = get_settings()
     url = settings.database_url
 
+    # Normalize Render PostgreSQL connection strings to asyncpg
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
     try:
         # SQLite async doesn't support max_overflow / pool_size arguments
         if "sqlite" in url:

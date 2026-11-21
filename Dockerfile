@@ -21,7 +21,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_ROOT_USER_ACTION=ignore \
     VIRTUAL_ENV=/opt/venv
 
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+ENV PATH="$VIRTUAL_ENV/bin:$PATH" \
+    PYTHONPATH="/app/backend:/app/ai_agent:/app:${PYTHONPATH}"
 
 WORKDIR /app
 
@@ -51,6 +52,13 @@ COPY render-start.sh ./render-start.sh
 RUN chmod +x ./render-start.sh
 COPY cctvfootagerailway.mp4 ./cctvfootagerailway.mp4
 COPY crowdvision_main.db ./crowdvision_main.db
+
+# Ensure persistence and upload directories exist
+RUN mkdir -p /app/backend/uploads/videos \
+             /app/backend/uploads/images \
+             /app/backend/uploads/floorplans \
+             /app/backend/uploads/processed \
+             /data
 
 # Copy compiled frontend SPA from builder stage
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist

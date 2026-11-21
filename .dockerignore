@@ -1,12 +1,32 @@
+# Git & VCS
 .git
 .github
-.pytest_cache
+.gitignore
+
+# Package managers & Virtual Environments
 node_modules
 frontend/node_modules
+frontend/dist
+.venv
+venv
+env
+ENV
+.pytest_cache
 __pycache__
+*/__pycache__
+*/*/__pycache__
 *.pyc
+*.pyo
+*.pyd
+
+# Environment secrets & temporary logs
 .env
+.env.local
+.env.*
 .coverage
 htmlcov
-scratch_*
 *.log
+scratch_*
+scratch_railway_frames
+*.md
+!README.md

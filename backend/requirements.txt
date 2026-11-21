@@ -13,18 +13,24 @@ alembic>=1.14.0
 
 # Computer Vision & Numerical Computing
 opencv-python-headless>=4.10.0.84
-Pillow>=10.0.0
+pillow>=10.4.0
 numpy>=1.26.0
 scipy>=1.14.0
 
 # Security & Authentication
 python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.0
 
 # Networking & Utilities
 httpx>=0.28.0
 python-dotenv>=1.0.1
 structlog>=24.4.0
+orjson>=3.10.0
+redis[hiredis]>=5.2.0
+
+# LLM Integration
+google-generativeai>=0.8.0
 
 # Testing & Quality
 pytest>=8.3.0
