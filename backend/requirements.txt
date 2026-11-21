@@ -1,5 +1,5 @@
 # CrowdVision Main Backend - Python Dependencies
-fastapi>=0.115.0
+fastapi>=0.163.2
 uvicorn[standard]>=0.32.0
 pydantic>=2.9.0
 pydantic-settings>=2.6.0
