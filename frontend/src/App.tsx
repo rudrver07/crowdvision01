@@ -22,6 +22,7 @@ import {
 } from './types';
 import { api } from './services/api';
 import { wsClient } from './services/websocket';
+import { voiceAlertService } from './services/voice/voiceAlertService';
 
 const AppInner: React.FC = () => {
   const { activeTask, refreshTasks } = useTaskContext();
@@ -68,6 +69,7 @@ const AppInner: React.FC = () => {
           api.getPredictions(activeTask.id).catch(() => []),
         ]);
         setAlerts(alts);
+        alts.forEach((a) => voiceAlertService.markAsAlreadyProcessed(a.id));
         if (summary) setZoneSummary(summary);
         if (preds) setPredictions(preds);
       } finally {

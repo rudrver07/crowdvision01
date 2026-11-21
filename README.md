@@ -80,6 +80,33 @@ Open `http://localhost:5173` in your browser.
 
 ---
 
+## ElevenLabs Voice Alert System
+
+CrowdVision features an integrated, professional voice alert subsystem powered by ElevenLabs Text-to-Speech:
+
+- **17-Second Fixed Aggregation Window**: Upon arrival of an alert, incoming alerts are grouped by stable zone ID over a 17-second window. Only the latest alert per zone is announced, in original first-seen zone order.
+- **Critical Escalation Protection**: Critical crowd surges and emergency density warnings are strictly preserved and never downgraded during aggregation.
+- **Global Single-Playback Authority**: Guaranteed `MAX_CONCURRENT_ACTIVE_PLAYBACKS === 1`. Announcements play strictly sequentially with synchronous locking, avoiding audio overlap.
+- **Multi-Tab & Cross-Client Coordination**: Coordinates via Web Locks API (`navigator.locks`), `BroadcastChannel`, and backend playback leases (`/api/voice/lease/*`) so only the active designated tab speaks.
+- **Bilingual Operational Announcements**: Supports English (`en`) and Hindi (`hi`), strictly using verified numerical telemetry (e.g. occupancy percentages) from the source alert.
+
+### ElevenLabs Configuration
+Configure the following backend environment variables in `.env` or in Render:
+```env
+ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
+ELEVENLABS_VOICE_ID=tnSpp4vdxKPjI9w0GnoV
+ELEVENLABS_MODEL_ID=eleven_flash_v2_5
+ELEVENLABS_OUTPUT_FORMAT=mp3_44100_128
+ELEVENLABS_ENABLED=true
+```
+
+To run the automated voice test suite (covering Scenarios A through K):
+```bash
+node --experimental-strip-types tests/test_voice_scenarios_a_to_k.ts
+```
+
+---
+
 ## Automated Verification & Testing
 
 Both subsystems include comprehensive automated unit, integration, security, and end-to-end workflow test suites (86 passing tests total):
@@ -104,3 +131,4 @@ CrowdVision does not transmit raw video frames, facial imagery, or personal biom
 ## Production Live Deployment
 - **Live URL**: https://crowdvision01-1.onrender.com
 - **Health Check**: https://crowdvision01-1.onrender.com/api/health
+https://crowdvision01-1.onrender.com/

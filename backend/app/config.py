@@ -63,6 +63,13 @@ class Settings(BaseSettings):
     ai_agent_timeout_seconds: float = 5.0
     ai_agent_enabled: bool = True
 
+    # ── ElevenLabs Voice Alert System ────────────────────────────
+    elevenlabs_api_key: str = ""
+    elevenlabs_voice_id: str = "tnSpp4vdxKPjI9w0GnoV"
+    elevenlabs_model_id: str = "eleven_flash_v2_5"
+    elevenlabs_output_format: str = "mp3_44100_128"
+    elevenlabs_enabled: bool = True
+
     @property
     def effective_port(self) -> int:
         if self.port is not None:

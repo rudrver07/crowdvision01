@@ -539,6 +539,39 @@ class ApiService {
   async exportReportCsv(reportId: string): Promise<string> {
     return this.request<string>(`/reports/${reportId}/export.csv`);
   }
+
+  // --- Voice Alerts (ElevenLabs) ---
+  async getVoiceStatus(): Promise<any> {
+    return this.request('/voice/status');
+  }
+
+  async formatVoiceAnnouncement(alert: any, language: string = 'en'): Promise<{ text: string; language: string }> {
+    return this.request('/voice/format', {
+      method: 'POST',
+      body: JSON.stringify({ alert, language }),
+    });
+  }
+
+  async acquireVoiceLease(clientId: string, ttlSec: number = 30.0): Promise<{ acquired: boolean; owner?: string }> {
+    return this.request('/voice/lease/acquire', {
+      method: 'POST',
+      body: JSON.stringify({ client_id: clientId, ttl_sec: ttlSec }),
+    });
+  }
+
+  async heartbeatVoiceLease(clientId: string, ttlSec: number = 30.0): Promise<{ acquired: boolean; owner?: string }> {
+    return this.request('/voice/lease/heartbeat', {
+      method: 'POST',
+      body: JSON.stringify({ client_id: clientId, ttl_sec: ttlSec }),
+    });
+  }
+
+  async releaseVoiceLease(clientId: string): Promise<{ released: boolean }> {
+    return this.request('/voice/lease/release', {
+      method: 'POST',
+      body: JSON.stringify({ client_id: clientId }),
+    });
+  }
 }
 
 export const api = new ApiService();

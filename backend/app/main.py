@@ -26,6 +26,7 @@ from app.api.routes import (
     tasks,
     venues,
     videos,
+    voice,
 )
 from app.api.websocket.handler import router as ws_router
 from app.config import get_settings
@@ -116,6 +117,7 @@ def create_app() -> FastAPI:
     app.include_router(recommendations.router, prefix="/api/recommendations", tags=["Recommendations"])
     app.include_router(reports.router, prefix="/api/reports", tags=["Reports"])
     app.include_router(chat.router, prefix="/api/chat", tags=["AI Analyst"])
+    app.include_router(voice.router, prefix="/api/voice", tags=["Voice Alerts"])
     app.include_router(health.router, prefix="/api/health", tags=["Health"])
     app.include_router(health.router, prefix="/health", tags=["Health"])
     app.include_router(health.router, prefix="/healthz", tags=["Health"])
